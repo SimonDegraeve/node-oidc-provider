@@ -1,43 +1,50 @@
 'use strict';
 
-const oidc = require('../../lib');
+const { Provider, AdapterTest } = require('../../lib');
 const { TestAdapter } = require('../models');
 const jose = require('node-jose');
 
-const Provider = oidc.Provider;
-const AdapterTest = oidc.AdapterTest;
 
-
-describe('AdapterTest', () => {
+describe('AdapterTest', function () {
   const integrity = (!process.env.INTEGRITY && Math.floor(Math.random() * 2)) ||
-    process.env.INTEGRITY === 'true';
+    process.env.INTEGRITY === 'on';
 
   if (integrity) {
     before(function () {
-      const ks = jose.JWK.createKeyStore();
-      this.ks = ks;
-      return ks.generate('oct', 512, { alg: 'HS512' });
+      const integrityKs = jose.JWK.createKeyStore();
+      this.integrity = integrityKs;
+      return integrityKs.generate('oct', 512, { alg: 'HS512' });
     });
   }
 
-  it('passes with the default MemoryAdapter', function () {
-    const provider = new Provider('http://localhost', {
-      tokenIntegrity: this.ks
-    });
-    const test = new AdapterTest(provider);
+  before(function () {
+    const keystore = jose.JWK.createKeyStore();
+    this.keystore = keystore;
+    return keystore.generate('RSA', 512);
+  });
 
-    return provider.keystore.generate('RSA', 512)
-    .then(() => test.execute());
+  it('passes with the default MemoryAdapter', function () {
+    const provider = new Provider('http://localhost');
+
+    return provider.initialize({
+      integrity: this.integrity,
+      keystore: this.keystore,
+    }).then(() => {
+      const test = new AdapterTest(provider);
+      return test.execute();
+    });
   });
 
   it('passes with the TestAdapter', function () {
     const provider = new Provider('http://localhost', {
-      adapter: TestAdapter,
-      tokenIntegrity: this.ks
+      adapter: TestAdapter
     });
-    const test = new AdapterTest(provider);
-
-    return provider.keystore.generate('RSA', 512)
-      .then(() => test.execute());
+    return provider.initialize({
+      integrity: this.integrity,
+      keystore: this.keystore,
+    }).then(() => {
+      const test = new AdapterTest(provider);
+      return test.execute();
+    });
   });
 });

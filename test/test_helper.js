@@ -20,6 +20,7 @@ const path = require('path');
 const koa = require('koa');
 const mount = require('koa-mount');
 const epochTime = require('../lib/helpers/epoch_time');
+global.i = global.instance = require('../lib/helpers/weak_cache');
 
 const responses = {
   serverErrorBody: {
@@ -36,13 +37,17 @@ const responses = {
   }
 };
 
+function ephemeralPort() {
+  return Math.floor(Math.random() * (61000 - 32768 + 1)) + 32768; // eslint-disable-line no-mixed-operators, max-len
+}
+
 module.exports = function testHelper(dir, basename, mountTo) {
   const conf = path.format({
     dir,
     base: `${basename || path.basename(dir)}.config.js`,
   });
-  const { config, client } = require(conf); // eslint-disable-line
-  const additionalClients = [];
+  let { config, client, clients } = require(conf); // eslint-disable-line
+  if (client && !clients) { clients = [client]; }
   config.adapter = TestAdapter;
   config.findById = Account.findById;
 
@@ -51,45 +56,30 @@ module.exports = function testHelper(dir, basename, mountTo) {
   const integrity = process.env.INTEGRITY === 'on' ||
     (process.env.INTEGRITY === 'random' && Math.floor(Math.random() * 2));
 
-  if (integrity) config.tokenIntegrity = global.integrity;
+  const port = ephemeralPort();
 
-  config.keystore = global.keystore;
-
-  const provider = new Provider(`http://127.0.0.1${mountTo || ''}`, config);
+  const provider = new Provider(`http://127.0.0.1:${port}${mountTo || ''}`, config);
   provider.defaultHttpOptions = { timeout: 50 };
 
   let server;
+  let agent;
 
-  if (mountTo) {
-    const app = koa();
-    app.use(mount(mountTo, provider.app));
-    server = app.listen();
-  } else {
-    server = provider.app.listen();
-  }
-
-  const agent = supertest(server);
-
-  provider.issuer = `http://127.0.0.1:${server.address().port}${mountTo || ''}`;
-
-  agent.logout = function logout() {
+  function logout() {
     const expire = new Date(0);
     const cookies = [
       `_session=; path=/; expires=${expire.toGMTString()}; httponly`,
       `_session.sig=; path=/; expires=${expire.toGMTString()}; httponly`,
     ];
 
-    cookies.push(`_state.${client.client_id}=; path=/; expires=${expire.toGMTString()}; httponly`);
-    cookies.push(`_state.${client.client_id}.sig=; path=/; expires=${expire.toGMTString()}; httponly`);
-    additionalClients.forEach((clientId) => {
-      cookies.push(`_state.${clientId}=; path=/; expires=${expire.toGMTString()}; httponly`);
-      cookies.push(`_state.${clientId}.sig=; path=/; expires=${expire.toGMTString()}; httponly`);
+    clients.forEach((cl) => {
+      cookies.push(`_state.${cl.client_id}=; path=/; expires=${expire.toGMTString()}; httponly`);
+      cookies.push(`_state.${cl.client_id}.sig=; path=/; expires=${expire.toGMTString()}; httponly`);
     });
 
     return agent._saveCookies.bind(agent)({ headers: { 'set-cookie': cookies } });
-  };
+  }
 
-  agent.login = function login() {
+  function login() {
     const sessionId = uuid();
     const loginTs = epochTime();
     const expire = new Date();
@@ -100,25 +90,24 @@ module.exports = function testHelper(dir, basename, mountTo) {
     const session = new (provider.Session)(sessionId, { loginTs, account });
     const cookies = [`_session=${sessionId}; path=/; expires=${expire.toGMTString()}; httponly`];
 
-    const sid = uuid();
-    session.authorizations = { [client.client_id]: { sid } };
-    additionalClients.forEach((clientId) => { session.authorizations[clientId] = { sid: uuid() }; });
-    this.clientSessionId = sid;
-
-    if (provider.configuration('features.sessionManagement')) {
-      cookies.push(`_state.${client.client_id}=${loginTs}; path=/; expires=${expire.toGMTString()};`);
-    }
+    session.authorizations = {};
+    clients.forEach((cl) => {
+      session.authorizations[cl.client_id] = { sid: uuid() };
+      if (i(provider).configuration('features.sessionManagement')) {
+        cookies.push(`_state.${cl.client_id}=${loginTs}; path=/; expires=${expire.toGMTString()};`);
+      }
+    });
 
     return Account.findById(account).then(session.save()).then(() => {
       agent._saveCookies.bind(agent)({ headers: { 'set-cookie': cookies } });
     });
-  };
+  }
 
   function AuthorizationRequest(parameters) {
-    this.client_id = client.client_id;
+    this.client_id = parameters.client_id || clients[0].client_id;
     this.state = Math.random().toString();
     this.nonce = Math.random().toString();
-    this.redirect_uri = client.redirect_uris[0];
+    this.redirect_uri = parameters.redirect_uri || clients[0].redirect_uris[0];
 
     Object.assign(this, parameters);
 
@@ -226,34 +215,19 @@ module.exports = function testHelper(dir, basename, mountTo) {
     };
   };
 
-  provider.setupClient = function setupClient(pass) {
-    if (pass) additionalClients.push(pass.client_id);
-
-    const add = pass || client;
-    before('adding client', () => {
-      return provider.addClient(add).catch((err) => {
-        throw err;
-      });
-    });
-
-    after('removing client', () => {
-      return provider.Client.remove(add.client_id);
-    });
-  };
-
-  function getSession(userAgent) {
-    const { value: sessionId } = userAgent.jar.getCookie('_session', { path: '/' });
+  function getSession() {
+    const { value: sessionId } = agent.jar.getCookie('_session', { path: '/' });
     const key = TestAdapter.for('Session').key(sessionId);
     return TestAdapter.for('Session').get(key);
   }
 
-  function getSessionId(userAgent) {
-    const { value: sessionId } = userAgent.jar.getCookie('_session', { path: '/' });
+  function getSessionId() {
+    const { value: sessionId } = agent.jar.getCookie('_session', { path: '/' });
     return sessionId;
   }
 
   function wrap(opts) {
-    const { agent, route, verb, auth, params } = opts; // eslint-disable-line no-shadow
+    const { route, verb, auth, params } = opts; // eslint-disable-line no-shadow
     switch (verb) {
       case 'get':
         return agent
@@ -269,14 +243,39 @@ module.exports = function testHelper(dir, basename, mountTo) {
     }
   }
 
-  return {
-    AuthorizationRequest,
-    provider,
-    agent,
-    responses,
-    getSessionId,
-    getSession,
-    wrap,
-    TestAdapter
+  after(function (done) {
+    server.close(done);
+  });
+
+  return function () {
+    Object.assign(this, {
+      login,
+      logout,
+      AuthorizationRequest,
+      provider,
+      responses,
+      getSessionId,
+      getSession,
+      wrap,
+      TestAdapter
+    });
+
+    return new Promise((resolve, reject) => {
+      provider.initialize({
+        clients,
+        keystore: global.keystore,
+        integrity: integrity ? global.integrity : undefined,
+      }).then(() => {
+        if (mountTo) {
+          const app = koa();
+          app.use(mount(mountTo, provider.app));
+          server = app.listen(port);
+        } else {
+          server = provider.app.listen(port);
+        }
+
+        this.agent = agent = supertest(server);
+      }, reject).then(resolve);
+    });
   };
 };

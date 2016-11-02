@@ -9,28 +9,17 @@ const JWT = require('../../lib/helpers/jwt');
 
 const route = '/token';
 
-describe('client authentication options', () => {
-  const { agent, provider, responses } = bootstrap(__dirname);
-  const Client = provider.Client;
+describe('client authentication options', function () {
+  before(bootstrap(__dirname)); // agent, this.provider, responses
 
-  describe('none auth', () => {
-    const client = {
-      token_endpoint_auth_method: 'none',
-      client_id: 'client',
-      client_secret: 'secret',
-      grant_types: ['implicit'],
-      response_types: ['id_token'],
-      redirect_uris: ['https://client.example.com/cb']
-    };
-    provider.setupClient(client);
-
-    it('accepts the auth', () => {
-      return agent.post(route)
+  describe('none auth', function () {
+    it('accepts the auth', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit'
       })
       .type('form')
-      .auth(client.client_id, client.client_secret)
+      .auth('client-none', 'secret')
       .expect({
         error: 'invalid_request',
         error_description: 'client not supposed to access token endpoint',
@@ -38,42 +27,34 @@ describe('client authentication options', () => {
     });
   });
 
-  describe('client_secret_basic auth', () => {
-    const client = {
-      token_endpoint_auth_method: 'client_secret_basic',
-      client_id: 'client',
-      client_secret: 'secret',
-      redirect_uris: ['https://client.example.com/cb']
-    };
-    provider.setupClient(client);
-
-    it('accepts the auth', () => {
-      return agent.post(route)
+  describe('client_secret_basic auth', function () {
+    it('accepts the auth', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit'
       })
       .type('form')
-      .auth(client.client_id, client.client_secret)
-      .expect(responses.tokenAuthSucceeded);
+      .auth('client-basic', 'secret')
+      .expect(this.responses.tokenAuthSucceeded);
     });
 
-    it('rejects invalid secrets', () => {
-      return agent.post(route)
+    it('rejects invalid secrets', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit'
       })
       .type('form')
-      .auth(client.client_id, 'invalid secret')
-      .expect(responses.tokenAuthRejected);
+      .auth('client-basic', 'invalid secret')
+      .expect(this.responses.tokenAuthRejected);
     });
 
-    it('requires the client_secret to be sent', () => {
-      return agent.post(route)
+    it('requires the client_secret to be sent', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit'
       })
       .type('form')
-      .auth(client.client_id, '')
+      .auth('client-basic', '')
       .expect({
         error: 'invalid_request',
         error_description: 'client_secret must be provided in the Authorization header',
@@ -81,42 +62,34 @@ describe('client authentication options', () => {
     });
   });
 
-  describe('client_secret_post auth', () => {
-    const client = {
-      token_endpoint_auth_method: 'client_secret_post',
-      client_id: 'client',
-      client_secret: 'secret',
-      redirect_uris: ['https://client.example.com/cb']
-    };
-    provider.setupClient(client);
-
-    it('accepts the auth', () => {
-      return agent.post(route)
+  describe('client_secret_post auth', function () {
+    it('accepts the auth', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit',
-        client_id: client.client_id,
-        client_secret: client.client_secret
+        client_id: 'client-post',
+        client_secret: 'secret'
       })
       .type('form')
-      .expect(responses.tokenAuthSucceeded);
+      .expect(this.responses.tokenAuthSucceeded);
     });
 
-    it('rejects the auth', () => {
-      return agent.post(route)
+    it('rejects the auth', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit',
-        client_id: client.client_id,
+        client_id: 'client-post',
         client_secret: 'invalid'
       })
       .type('form')
-      .expect(responses.tokenAuthRejected);
+      .expect(this.responses.tokenAuthRejected);
     });
 
-    it('requires the client_secret to be sent', () => {
-      return agent.post(route)
+    it('requires the client_secret to be sent', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit',
-        client_id: client.client_id,
+        client_id: 'client-post',
         client_secret: ''
       })
       .type('form')
@@ -127,41 +100,32 @@ describe('client authentication options', () => {
     });
   });
 
-  describe('client_secret_jwt auth', () => {
-    const client = {
-      token_endpoint_auth_method: 'client_secret_jwt',
-      client_id: 'client',
-      client_secret: 'atleast32byteslongforHS256mmkay?',
-      redirect_uris: ['https://client.example.com/cb']
-    };
-    provider.setupClient(client);
+  describe('client_secret_jwt auth', function () {
+    before(function* () {
+      this.key = (yield this.provider.Client.find('client-jwt-secret')).keystore.get();
+    });
 
-    it('accepts the auth', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('accepts the auth', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id
-      }, key, 'HS256', {
-        expiresIn: 60
-      }).then(assertion => agent.post(route)
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret'
+      }, this.key, 'HS256', { expiresIn: 60 }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
       })
       .type('form')
-      .expect(responses.tokenAuthSucceeded));
+      .expect(this.responses.tokenAuthSucceeded));
     });
 
-    // TODO: it('rejects tokens signed wrong, invalid or expired');
-
-    it('rejects malformed assertions', () => {
-      return agent.post(route)
+    it('rejects malformed assertions', function () {
+      return this.agent.post(route)
       .send({
-        client_id: client.client_id,
-        client_assertion: '.eyJzdWIiOiJjbGllbnQifQ.',
+        client_id: 'client-jwt-secret',
+        client_assertion: '.eyJzdWIiOiJjbGllbnQtand0LXNlY3JldCIsImFsZyI6IkhTMjU2In0.',
         grant_type: 'implicit',
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
       })
@@ -172,17 +136,16 @@ describe('client authentication options', () => {
       });
     });
 
-    it('exp must be set', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('exp must be set', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id,
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret',
         exp: ''
-      }, key, 'HS256', {
+      }, this.key, 'HS256', {
         // expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -195,16 +158,15 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('jti must be set', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('jti must be set', function () {
       return JWT.sign({
         // jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id,
-      }, key, 'HS256', {
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret',
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -217,16 +179,15 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('iss must be set', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('iss must be set', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        // iss: client.client_id,
-      }, key, 'HS256', {
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        // iss: 'client-jwt-secret',
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -239,16 +200,15 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('iss must be the client id', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('iss must be the client id', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
         iss: 'not equal to clientid',
-      }, key, 'HS256', {
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -261,17 +221,16 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('audience as array must contain the token endpoint', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('audience as array must contain the token endpoint', function () {
       return JWT.sign({
         jti: uuid(),
-        // aud: provider.issuer + provider.pathFor('token'),
+        // aud: this.provider.issuer + this.provider.pathFor('token'),
         aud: ['misses the token endpoint'],
-        sub: client.client_id,
-        iss: client.client_id,
-      }, key, 'HS256', {
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret',
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -284,17 +243,16 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('audience as single entry must be the token endpoint', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('audience as single entry must be the token endpoint', function () {
       return JWT.sign({
         jti: uuid(),
-        // aud: provider.issuer + provider.pathFor('token'),
+        // aud: this.provider.issuer + this.provider.pathFor('token'),
         aud: 'not the token endpoint',
-        sub: client.client_id,
-        iss: client.client_id,
-      }, key, 'HS256', {
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret',
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -307,11 +265,11 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('requires client_assertion', () => {
-      return agent.post(route)
+    it('requires client_assertion', function () {
+      return this.agent.post(route)
       .send({
         grant_type: 'implicit',
-        client_id: client.client_id,
+        client_id: 'client-jwt-secret',
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
       })
       .type('form')
@@ -321,16 +279,15 @@ describe('client authentication options', () => {
       });
     });
 
-    it('requires client_assertion_type', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('requires client_assertion_type', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id
-      }, key, 'HS256', {
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret'
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -343,16 +300,15 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('requires client_assertion_type of specific value', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('requires client_assertion_type of specific value', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id
-      }, key, 'HS256', {
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret'
+      }, this.key, 'HS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -365,8 +321,8 @@ describe('client authentication options', () => {
       }));
     });
 
-    it('rejects invalid assertions', () => {
-      return agent.post(route)
+    it('rejects invalid assertions', function () {
+      return this.agent.post(route)
       .send({
         client_assertion: 'this.notatall.valid',
         grant_type: 'implicit',
@@ -379,16 +335,15 @@ describe('client authentication options', () => {
       });
     });
 
-    it('rejects invalid jwts', function* () {
-      const key = (yield Client.find('client')).keystore.get();
+    it('rejects invalid jwts', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id
-      }, key, 'HS256', {
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-secret',
+        iss: 'client-jwt-secret'
+      }, this.key, 'HS256', {
         expiresIn: -1
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
@@ -401,27 +356,26 @@ describe('client authentication options', () => {
       }));
     });
 
-    describe('JTI uniqueness', () => {
-      before(() => {
-        sinon.stub(provider.configuration(), 'uniqueness', () => {
+    describe('JTI uniqueness', function () {
+      before(function () {
+        sinon.stub(i(this.provider).configuration(), 'uniqueness', () => {
           return Promise.resolve(false);
         });
       });
 
-      after(() => {
-        provider.configuration().uniqueness.restore();
+      after(function () {
+        i(this.provider).configuration().uniqueness.restore();
       });
 
-      it('reused jtis must be rejected', function* () {
-        const key = (yield Client.find('client')).keystore.get();
+      it('reused jtis must be rejected', function () {
         return JWT.sign({
           jti: uuid(),
-          aud: provider.issuer + provider.pathFor('token'),
-          sub: client.client_id,
-          iss: client.client_id
-        }, key, 'HS256', {
+          aud: this.provider.issuer + this.provider.pathFor('token'),
+          sub: 'client-jwt-secret',
+          iss: 'client-jwt-secret'
+        }, this.key, 'HS256', {
           expiresIn: 60
-        }).then(assertion => agent.post(route)
+        }).then(assertion => this.agent.post(route)
         .send({
           client_assertion: assertion,
           grant_type: 'implicit',
@@ -435,23 +389,22 @@ describe('client authentication options', () => {
       });
     });
 
-    describe('when token_endpoint_auth_signing_alg is set on the client', () => {
+    describe('when token_endpoint_auth_signing_alg is set on the client', function () {
       before(function* () {
-        (yield Client.find('client')).tokenEndpointAuthSigningAlg = 'HS384';
+        (yield this.provider.Client.find('client-jwt-secret')).tokenEndpointAuthSigningAlg = 'HS384';
       });
       after(function* () {
-        delete (yield Client.find('client')).tokenEndpointAuthSigningAlg;
+        delete (yield this.provider.Client.find('client-jwt-secret')).tokenEndpointAuthSigningAlg;
       });
-      it('rejects signatures with different algorithm', function* () {
-        const key = (yield Client.find('client')).keystore.get();
+      it('rejects signatures with different algorithm', function () {
         return JWT.sign({
           jti: uuid(),
-          aud: provider.issuer + provider.pathFor('token'),
-          sub: client.client_id,
-          iss: client.client_id
-        }, key, 'HS256', {
+          aud: this.provider.issuer + this.provider.pathFor('token'),
+          sub: 'client-jwt-secret',
+          iss: 'client-jwt-secret'
+        }, this.key, 'HS256', {
           expiresIn: 60
-        }).then(assertion => agent.post(route)
+        }).then(assertion => this.agent.post(route)
         .send({
           client_assertion: assertion,
           grant_type: 'implicit',
@@ -466,42 +419,31 @@ describe('client authentication options', () => {
     });
   });
 
-  describe('private_key_jwt auth', () => {
+  describe('private_key_jwt auth', function () {
     let privateKey;
 
-    before(() => {
+    before(function () {
       return jose.JWK.asKey(clientKey).then((key) => {
         privateKey = key;
       });
     });
 
-    const client = {
-      client_id: 'client',
-      client_secret: 'whateverwontbeusedanyway',
-      redirect_uris: ['https://client.example.com/cb'],
-      token_endpoint_auth_method: 'private_key_jwt',
-      jwks: {
-        keys: [clientKey]
-      }
-    };
-    provider.setupClient(client);
-
-    it('accepts the auth', () => {
+    it('accepts the auth', function () {
       return JWT.sign({
         jti: uuid(),
-        aud: provider.issuer + provider.pathFor('token'),
-        sub: client.client_id,
-        iss: client.client_id
+        aud: this.provider.issuer + this.provider.pathFor('token'),
+        sub: 'client-jwt-key',
+        iss: 'client-jwt-key'
       }, privateKey, 'RS256', {
         expiresIn: 60
-      }).then(assertion => agent.post(route)
+      }).then(assertion => this.agent.post(route)
       .send({
         client_assertion: assertion,
         grant_type: 'implicit',
         client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
       })
       .type('form')
-      .expect(responses.tokenAuthSucceeded));
+      .expect(this.responses.tokenAuthSucceeded));
     });
   });
 });

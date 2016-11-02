@@ -3,6 +3,10 @@
   "env": {
     "mocha": true
   },
+  "globals": {
+    "i": true,
+    "instance": true
+  },
   "rules": {
     "arrow-body-style": "off",
     "comma-dangle": "off",
