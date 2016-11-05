@@ -61,7 +61,7 @@ module.exports = function testHelper(dir, basename, mountTo) {
   let server;
 
   if (mountTo) {
-    const app = koa();
+    const app = new koa();
     app.use(mount(mountTo, provider.app));
     server = app.listen();
   } else {
