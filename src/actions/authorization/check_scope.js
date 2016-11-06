@@ -10,17 +10,17 @@ const errors = require('../../helpers/errors');
  * @throws: invalid_request
  */
 module.exports = provider => async function checkScope(ctx, next) {
-  const scopes = this.oidc.params.scope.split(' ');
+  const scopes = ctx.oidc.params.scope.split(' ');
 
   const unsupported = _.difference(scopes, provider.configuration('scopes'));
-  this.assert(_.isEmpty(unsupported), new errors.InvalidRequestError(
+  ctx.assert(_.isEmpty(unsupported), new errors.InvalidRequestError(
     `invalid scope value(s) provided. (${unsupported.join(',')})`));
 
-  this.assert(scopes.indexOf('openid') !== -1,
+  ctx.assert(scopes.indexOf('openid') !== -1,
     new errors.InvalidRequestError('openid is required scope'));
 
-  if (scopes.indexOf('offline_access') !== -1 && this.oidc.prompts.indexOf('consent') === -1) {
-    this.throw(new errors.InvalidRequestError('offline_access scope requires consent prompt'));
+  if (scopes.indexOf('offline_access') !== -1 && ctx.oidc.prompts.indexOf('consent') === -1) {
+    ctx.throw(new errors.InvalidRequestError('offline_access scope requires consent prompt'));
   }
 
   await next();

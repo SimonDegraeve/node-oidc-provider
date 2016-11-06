@@ -4,12 +4,12 @@ const errors = require('../helpers/errors');
 
 module.exports = function getLoadClient(provider) {
   return async function loadClient(ctx, next) {
-    const client = await provider.Client.find(this.oidc.authorization.clientId);
+    const client = await provider.Client.find(ctx.oidc.authorization.clientId);
 
-    this.assert(client, new errors.InvalidClientError(
+    ctx.assert(client, new errors.InvalidClientError(
       'invalid client authentication provided (client not found)'));
 
-    this.oidc.client = client;
+    ctx.oidc.client = client;
 
     await next();
   };

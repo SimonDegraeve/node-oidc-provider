@@ -8,9 +8,9 @@ const errors = require('../../helpers/errors');
  * @throws: invalid_request
  */
 module.exports = async function checkOpenIdPresent(ctx, next) {
-  const scopes = this.oidc.params.scope.split(' ');
+  const scopes = ctx.oidc.params.scope.split(' ');
 
-  this.assert(scopes.indexOf('openid') !== -1,
+  ctx.assert(scopes.indexOf('openid') !== -1,
     new errors.InvalidRequestError('openid is required scope'));
 
   await next();

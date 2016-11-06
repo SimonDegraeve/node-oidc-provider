@@ -25,16 +25,16 @@ module.exports = function userinfoAction(provider) {
   return compose([
     async function setAuthenticate(ctx, next) {
       await next();
-      if (this.status === 401) {
+      if (ctx.status === 401) {
         const wwwAuth = _.chain({
           realm: provider.issuer,
         })
-          .merge(this.body)
+          .merge(ctx.body)
           .map((val, key) => `${key}="${val}"`)
           .value()
           .join(', ');
 
-        this.set('WWW-Authenticate', `Bearer ${wwwAuth}`);
+        ctx.set('WWW-Authenticate', `Bearer ${wwwAuth}`);
       }
     },
 
@@ -47,20 +47,20 @@ module.exports = function userinfoAction(provider) {
     rejectDupes,
 
     async function validateBearer(ctx, next) {
-      const accessToken = await provider.AccessToken.find(this.oidc.bearer);
-      this.assert(accessToken, new errors.InvalidTokenError());
+      const accessToken = await provider.AccessToken.find(ctx.oidc.bearer);
+      ctx.assert(accessToken, new errors.InvalidTokenError());
 
-      this.oidc.accessToken = accessToken;
+      ctx.oidc.accessToken = accessToken;
       await next();
     },
 
     async function validateScope(ctx, next) {
-      if (this.oidc.params.scope) {
-        const accessTokenScopes = this.oidc.accessToken.scope.split(' ');
-        const missing = _.difference(this.oidc.params.scope.split(' '),
+      if (ctx.oidc.params.scope) {
+        const accessTokenScopes = ctx.oidc.accessToken.scope.split(' ');
+        const missing = _.difference(ctx.oidc.params.scope.split(' '),
           accessTokenScopes);
 
-        this.assert(_.isEmpty(missing), 400, 'invalid_scope', {
+        ctx.assert(_.isEmpty(missing), 400, 'invalid_scope', {
           error_description: 'access token missing requested scope',
           scope: missing.join(' '),
         });
@@ -69,48 +69,48 @@ module.exports = function userinfoAction(provider) {
     },
 
     async function loadClient(ctx, next) {
-      const client = await provider.Client.find(this.oidc.accessToken.clientId);
-      this.assert(client, new errors.InvalidTokenError());
+      const client = await provider.Client.find(ctx.oidc.accessToken.clientId);
+      ctx.assert(client, new errors.InvalidTokenError());
 
-      this.oidc.client = client;
+      ctx.oidc.client = client;
 
       await next();
     },
 
     async function loadAccount(ctx, next) {
-      const account = await provider.Account.findById(this.oidc.accessToken.accountId);
+      const account = await provider.Account.findById(ctx.oidc.accessToken.accountId);
 
-      this.assert(account, new errors.InvalidTokenError());
+      ctx.assert(account, new errors.InvalidTokenError());
 
-      this.oidc.account = account;
+      ctx.oidc.account = account;
 
       await next();
     },
 
-    async function respond() {
-      const claims = _.get(this.oidc.accessToken, 'claims.userinfo', {});
-      const scope = this.oidc.params.scope || this.oidc.accessToken.scope;
-      const client = this.oidc.client;
+    async function respond(ctx) {
+      const claims = _.get(ctx.oidc.accessToken, 'claims.userinfo', {});
+      const scope = ctx.oidc.params.scope || ctx.oidc.accessToken.scope;
+      const client = ctx.oidc.client;
 
       if (client.userinfoSignedResponseAlg || client.userinfoEncryptedResponseAlg) {
         const IdToken = provider.IdToken;
-        const token = new IdToken(this.oidc.account.claims(), client.sectorIdentifier);
+        const token = new IdToken(ctx.oidc.account.claims(), client.sectorIdentifier);
 
         token.scope = scope;
         token.mask = claims;
 
-        this.body = await token.sign(client, {
-          expiresAt: this.oidc.accessToken.exp,
+        ctx.body = await token.sign(client, {
+          expiresAt: ctx.oidc.accessToken.exp,
           use: 'userinfo',
         });
-        this.type = 'application/jwt; charset=utf-8';
+        ctx.type = 'application/jwt; charset=utf-8';
       } else {
-        const mask = new Claims(this.oidc.account.claims(), client.sectorIdentifier);
+        const mask = new Claims(ctx.oidc.account.claims(), client.sectorIdentifier);
 
         mask.scope(scope);
         mask.mask(claims);
 
-        this.body = mask.result();
+        ctx.body = mask.result();
       }
     },
   ]);

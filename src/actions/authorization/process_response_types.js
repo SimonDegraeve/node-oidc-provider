@@ -8,14 +8,14 @@ module.exports = (provider) => {
   const AuthorizationCode = provider.AuthorizationCode;
   const IdToken = provider.IdToken;
 
-  async function tokenHandler() {
+  async function tokenHandler(ctx) {
     const at = new AccessToken({
-      accountId: this.oidc.session.accountId(),
-      claims: this.oidc.claims,
-      clientId: this.oidc.client.clientId,
-      grantId: this.oidc.uuid,
-      scope: this.oidc.params.scope,
-      sid: this.oidc.session.sidFor(this.oidc.client.clientId),
+      accountId: ctx.oidc.session.accountId(),
+      claims: ctx.oidc.claims,
+      clientId: ctx.oidc.client.clientId,
+      grantId: ctx.oidc.uuid,
+      scope: ctx.oidc.params.scope,
+      sid: ctx.oidc.session.sidFor(ctx.oidc.client.clientId),
     });
 
     return {
@@ -25,42 +25,42 @@ module.exports = (provider) => {
     };
   }
 
-  async function codeHandler() {
+  async function codeHandler(ctx) {
     const ac = new AuthorizationCode({
-      accountId: this.oidc.session.accountId(),
-      acr: this.oidc.session.acr(this.oidc.uuid),
-      authTime: this.oidc.session.authTime(),
-      claims: this.oidc.claims,
-      clientId: this.oidc.client.clientId,
-      codeChallenge: this.oidc.params.code_challenge,
-      codeChallengeMethod: this.oidc.params.code_challenge_method,
-      grantId: this.oidc.uuid,
-      nonce: this.oidc.params.nonce,
-      redirectUri: this.oidc.params.redirect_uri,
-      scope: this.oidc.params.scope,
+      accountId: ctx.oidc.session.accountId(),
+      acr: ctx.oidc.session.acr(ctx.oidc.uuid),
+      authTime: ctx.oidc.session.authTime(),
+      claims: ctx.oidc.claims,
+      clientId: ctx.oidc.client.clientId,
+      codeChallenge: ctx.oidc.params.code_challenge,
+      codeChallengeMethod: ctx.oidc.params.code_challenge_method,
+      grantId: ctx.oidc.uuid,
+      nonce: ctx.oidc.params.nonce,
+      redirectUri: ctx.oidc.params.redirect_uri,
+      scope: ctx.oidc.params.scope,
     });
 
     if (provider.configuration('features.backchannelLogout')) {
-      ac.sid = this.oidc.session.sidFor(this.oidc.client.clientId);
+      ac.sid = ctx.oidc.session.sidFor(ctx.oidc.client.clientId);
     }
 
     return { code: await ac.save() };
   }
 
-  function idTokenHandler() {
+  function idTokenHandler(ctx) {
     const token = new IdToken(
-      Object.assign({}, this.oidc.account.claims(), {
-        acr: this.oidc.session.acr(this.oidc.uuid),
-        auth_time: this.oidc.session.authTime(),
-      }), this.oidc.client.sectorIdentifier);
+      Object.assign({}, ctx.oidc.account.claims(), {
+        acr: ctx.oidc.session.acr(ctx.oidc.uuid),
+        auth_time: ctx.oidc.session.authTime(),
+      }), ctx.oidc.client.sectorIdentifier);
 
-    token.scope = this.oidc.params.scope;
-    token.mask = _.get(this.oidc.claims, 'id_token', {});
+    token.scope = ctx.oidc.params.scope;
+    token.mask = _.get(ctx.oidc.claims, 'id_token', {});
 
-    token.set('nonce', this.oidc.params.nonce);
+    token.set('nonce', ctx.oidc.params.nonce);
 
     if (provider.configuration('features.backchannelLogout')) {
-      token.set('sid', this.oidc.session.sidFor(this.oidc.client.clientId));
+      token.set('sid', ctx.oidc.session.sidFor(ctx.oidc.client.clientId));
     }
 
     return { id_token: token };
@@ -70,20 +70,20 @@ module.exports = (provider) => {
     return {};
   }
 
-  function callHandlers(responseType) {
+  function callHandlers(ctx, responseType) {
     let fn;
     switch (responseType) {
       case 'none':
-        fn = noneHandler.apply(this);
+        fn = noneHandler(ctx);
         break;
       case 'token':
-        fn = tokenHandler.apply(this);
+        fn = tokenHandler(ctx);
         break;
       case 'id_token':
-        fn = idTokenHandler.apply(this);
+        fn = idTokenHandler(ctx);
         break;
       case 'code':
-        fn = codeHandler.apply(this);
+        fn = codeHandler(ctx);
         break;
       /* istanbul ignore next */
       default:
@@ -97,9 +97,9 @@ module.exports = (provider) => {
    * Resolves each requested response type to a single response object. If one of the hybrid
    * response types is used an appropriate _hash is also pushed on to the id_token.
    */
-  return async function processResponseTypes() {
-    const responses = this.oidc.params.response_type.split(' ');
-    const out = Object.assign.apply({}, await responses.map(callHandlers.bind(this)));
+  return async function processResponseTypes(ctx) {
+    const responses = ctx.oidc.params.response_type.split(' ');
+    const out = Object.assign.apply({}, await Promise.all(responses.map(responseType => callHandlers(ctx, responseType))));
 
     if (out.access_token && out.id_token) {
       out.id_token.set('at_hash', out.access_token);
@@ -110,7 +110,7 @@ module.exports = (provider) => {
     }
 
     if (out.id_token) {
-      out.id_token = await out.id_token.sign(this.oidc.client);
+      out.id_token = await out.id_token.sign(ctx.oidc.client);
     }
 
     return out;

@@ -10,10 +10,10 @@ describe('custom token endpoint grant types', () => {
     expect(() => {
       provider.registerGrantType('lotto', (passedProvider) => {
         expect(passedProvider).to.equal(provider);
-        return function* (next) {
-          this.body = { winner: this.oidc.params.name };
-          this.status = 201;
-          yield next;
+        return function (ctx, next) {
+          ctx.body = { winner: ctx.oidc.params.name };
+          ctx.status = 201;
+          
         };
       }, ['name']);
     }).not.to.throw();
@@ -23,7 +23,7 @@ describe('custom token endpoint grant types', () => {
 
   it('does not need to be passed extra parameters', () => {
     expect(() => {
-      provider.registerGrantType('lotto-2', () => function* () {}); // eslint-disable-line no-empty-function
+      provider.registerGrantType('lotto-2', () => function () {}); // eslint-disable-line no-empty-function
     }).not.to.throw();
 
     expect(provider.configuration('grantTypes').has('lotto-2')).to.be.true;
@@ -31,8 +31,8 @@ describe('custom token endpoint grant types', () => {
 
   it('can be passed null or a string', () => {
     expect(() => {
-      provider.registerGrantType('lotto-3', () => function* () {}, null); // eslint-disable-line no-empty-function
-      provider.registerGrantType('lotto-4', () => function* () {}, 'name'); // eslint-disable-line no-empty-function
+      provider.registerGrantType('lotto-3', () => function () {}, null); // eslint-disable-line no-empty-function
+      provider.registerGrantType('lotto-4', () => function () {}, 'name'); // eslint-disable-line no-empty-function
     }).not.to.throw();
 
     expect(provider.configuration('grantTypes').has('lotto-3')).to.be.true;
@@ -43,6 +43,7 @@ describe('custom token endpoint grant types', () => {
     provider.setupClient();
 
     it('clients can start using it', () => {
+      
       return agent.post('/token')
       .auth('client', 'secret')
       .send({ grant_type: 'lotto', name: 'Filip' })

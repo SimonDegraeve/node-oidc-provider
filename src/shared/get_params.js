@@ -13,8 +13,8 @@ module.exports = function getParams(whitelist) {
   }
 
   return async function assembleParams(ctx, next) {
-    const params = this.method === 'POST' ? this.request.body : this.query;
-    this.oidc.params = new Params(params);
+    const params = ctx.method === 'POST' ? ctx.request.body : ctx.query;
+    ctx.oidc.params = new Params(params);
     await next();
   };
 };

@@ -22,8 +22,8 @@ const FORBIDDEN = [
   'client_id_issued_at',
 ];
 
-function findMissingKey(value, key) {
-  return FORBIDDEN.indexOf(key) === -1 && !_.has(this.request.body, key) && value !== undefined;
+function findMissingKey(ctx, value, key) {
+  return FORBIDDEN.indexOf(key) === -1 && !_.has(ctx.request.body, key) && value !== undefined;
 }
 
 module.exports = function registrationAction(provider) {
@@ -39,17 +39,17 @@ module.exports = function registrationAction(provider) {
     const setup = provider.configuration('features.registration');
     switch (setup.initialAccessToken && typeof setup.initialAccessToken) {
       case 'boolean': 
-        const initialAccessToken = await InitialAccessToken.find(this.oidc.bearer);
-        this.assert(initialAccessToken, new errors.InvalidTokenError());
+        const initialAccessToken = await InitialAccessToken.find(ctx.oidc.bearer);
+        ctx.assert(initialAccessToken, new errors.InvalidTokenError());
         break;
       
       case 'string': {
         const valid = bufferEqualsConstant(
           new Buffer(setup.initialAccessToken, 'utf8'),
-          new Buffer(this.oidc.bearer, 'utf8'),
+          new Buffer(ctx.oidc.bearer, 'utf8'),
           1000
         );
-        this.assert(valid, new errors.InvalidTokenError());
+        ctx.assert(valid, new errors.InvalidTokenError());
         break;
       }
       default:
@@ -59,17 +59,17 @@ module.exports = function registrationAction(provider) {
   }
 
   async function validateRegistrationAccessToken(ctx, next) {
-    const regAccessToken = await RegistrationAccessToken.find(this.oidc.bearer);
-    this.assert(regAccessToken, new errors.InvalidTokenError());
+    const regAccessToken = await RegistrationAccessToken.find(ctx.oidc.bearer);
+    ctx.assert(regAccessToken, new errors.InvalidTokenError());
 
-    const client = await provider.Client.find(this.params.clientId);
+    const client = await provider.Client.find(ctx.params.clientId);
 
     if (!client || client.clientId !== regAccessToken.clientId) {
       await regAccessToken.destroy();
-      this.throw(new errors.InvalidTokenError());
+      ctx.throw(new errors.InvalidTokenError());
     }
 
-    this.oidc.client = client;
+    ctx.oidc.client = client;
 
     await next();
   }
@@ -85,7 +85,7 @@ module.exports = function registrationAction(provider) {
 
         const rat = new RegistrationAccessToken({ clientId });
 
-        Object.assign(properties, this.request.body, {
+        Object.assign(properties, ctx.request.body, {
           client_id: clientId,
           client_id_issued_at: epochTime(),
         });
@@ -102,18 +102,18 @@ module.exports = function registrationAction(provider) {
 
         const client = await provider.addClient(properties, true);
 
-        this.body = client.metadata();
+        ctx.body = client.metadata();
 
-        Object.assign(this.body, {
-          registration_client_uri: this.oidc.urlFor('registration_client', {
+        Object.assign(ctx.body, {
+          registration_client_uri: ctx.oidc.urlFor('registration_client', {
             clientId: properties.client_id,
           }),
           registration_access_token: await rat.save(),
         });
 
-        this.status = 201;
+        ctx.status = 201;
 
-        provider.emit('registration_create.success', client, this);
+        provider.emit('registration_create.success', client, ctx);
       },
     ]),
 
@@ -122,12 +122,12 @@ module.exports = function registrationAction(provider) {
       validateRegistrationAccessToken,
 
       async function clientReadResponse(ctx, next) {
-        this.body = this.oidc.client.metadata();
+        ctx.body = ctx.oidc.client.metadata();
 
-        Object.assign(this.body, {
-          registration_access_token: this.oidc.bearer,
-          registration_client_uri: this.oidc.urlFor('registration_client', {
-            clientId: this.params.clientId,
+        Object.assign(ctx.body, {
+          registration_access_token: ctx.oidc.bearer,
+          registration_client_uri: ctx.oidc.urlFor('registration_client', {
+            clientId: ctx.params.clientId,
           }),
         });
 
@@ -141,32 +141,32 @@ module.exports = function registrationAction(provider) {
       parseBody,
 
       async function forbiddenFields(ctx, next) {
-        const hit = FORBIDDEN.find(field => this.request.body[field] !== undefined);
+        const hit = FORBIDDEN.find(field => ctx.request.body[field] !== undefined);
 
-        this.assert(!hit, new errors.InvalidRequestError(
+        ctx.assert(!hit, new errors.InvalidRequestError(
           `request MUST NOT include the "${hit}" field`));
 
         await next();
       },
 
       async function metaChecks(ctx, next) {
-        const hit = _.findKey(this.oidc.client.metadata(), findMissingKey.bind(this));
+        const hit = _.findKey(ctx.oidc.client.metadata(), (value, key) => findMissingKey(ctx, value, key));
 
-        this.assert(!hit, new errors.InvalidRequestError(`${hit} must be provided`));
+        ctx.assert(!hit, new errors.InvalidRequestError(`${hit} must be provided`));
         await next();
       },
 
       async function equalChecks(ctx, next) {
-        this.assert(this.request.body.client_id === this.oidc.client.clientId,
+        ctx.assert(ctx.request.body.client_id === ctx.oidc.client.clientId,
           new errors.InvalidRequestError('provided client_id is not right')); // TODO: msg
 
-        if (this.request.body.client_secret) {
+        if (ctx.request.body.client_secret) {
           const clientSecretValid = bufferEqualsConstant(
-            new Buffer(this.request.body.client_secret, 'utf8'),
-            new Buffer(this.oidc.client.clientSecret, 'utf8'),
+            new Buffer(ctx.request.body.client_secret, 'utf8'),
+            new Buffer(ctx.oidc.client.clientSecret, 'utf8'),
             1000
           );
-          this.assert(clientSecretValid,
+          ctx.assert(clientSecretValid,
             new errors.InvalidRequestError('provided client_secret is not right')); // TODO: msg
         }
 
@@ -174,22 +174,22 @@ module.exports = function registrationAction(provider) {
       },
 
       async function clientUpdateResponse(ctx, next) {
-        if (this.oidc.client.noManage) {
+        if (ctx.oidc.client.noManage) {
           throw new errors.InvalidRequestError('this client is not allowed to update its records',
             403);
         }
 
-        provider.emit('registration_update.success', this.oidc.client, this);
+        provider.emit('registration_update.success', ctx.oidc.client, ctx);
 
         const properties = {};
 
-        Object.assign(properties, this.request.body, {
-          client_id: this.oidc.client.clientId,
-          client_id_issued_at: this.oidc.client.clientIdIssuedAt,
+        Object.assign(properties, ctx.request.body, {
+          client_id: ctx.oidc.client.clientId,
+          client_id_issued_at: ctx.oidc.client.clientIdIssuedAt,
         });
 
         const Client = provider.Client;
-        const secretRequired = !this.oidc.client.clientSecret && Client.needsSecret(properties);
+        const secretRequired = !ctx.oidc.client.clientSecret && Client.needsSecret(properties);
 
         if (secretRequired) {
           Object.assign(properties, {
@@ -198,19 +198,19 @@ module.exports = function registrationAction(provider) {
           });
         } else {
           Object.assign(properties, {
-            client_secret: this.oidc.client.clientSecret,
-            client_secret_expires_at: this.oidc.client.clientSecretExpiresAt,
+            client_secret: ctx.oidc.client.clientSecret,
+            client_secret_expires_at: ctx.oidc.client.clientSecretExpiresAt,
           });
         }
 
         const client = await provider.addClient(properties, true);
 
-        this.body = client.metadata();
+        ctx.body = client.metadata();
 
-        Object.assign(this.body, {
-          registration_access_token: this.oidc.bearer,
-          registration_client_uri: this.oidc.urlFor('registration_client', {
-            clientId: this.params.clientId,
+        Object.assign(ctx.body, {
+          registration_access_token: ctx.oidc.bearer,
+          registration_client_uri: ctx.oidc.urlFor('registration_client', {
+            clientId: ctx.params.clientId,
           }),
         });
 
@@ -223,15 +223,15 @@ module.exports = function registrationAction(provider) {
       validateRegistrationAccessToken,
 
       async function clientRemoveResponse(ctx, next) {
-        if (this.oidc.client.noManage) {
+        if (ctx.oidc.client.noManage) {
           throw new errors.InvalidRequestError('this client is not allowed to delete itself', 403);
         }
 
-        await provider.Client.remove(this.oidc.client.clientId);
+        await provider.Client.remove(ctx.oidc.client.clientId);
 
-        this.status = 204;
+        ctx.status = 204;
 
-        provider.emit('registration_delete.success', this.oidc.client, this);
+        provider.emit('registration_delete.success', ctx.oidc.client, ctx);
 
         await next();
       },

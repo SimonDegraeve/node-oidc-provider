@@ -2,9 +2,9 @@
 
 module.exports = function checkSessionAction() {
   return async function checkSessionIframe(ctx, next) {
-    const debug = this.query.debug !== undefined;
-    this.type = 'html';
-    this.body = `<!DOCTYPE html>
+    const debug = ctx.query.debug !== undefined;
+    ctx.type = 'html';
+    ctx.body = `<!DOCTYPE html>
   <html>
   <head lang="en">
     <meta charset="UTF-8">

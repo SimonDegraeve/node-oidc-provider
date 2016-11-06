@@ -12,28 +12,28 @@ const errors = require('../../helpers/errors');
  * @throws: registration_not_supported
  */
 module.exports = provider => async function throwNotSupported(ctx, next) {
-  const params = this.oidc.params;
+  const params = ctx.oidc.params;
   const feature = provider.configuration('features');
 
   if (!feature.request && params.request !== undefined) {
-    this.throw(400, 'request_not_supported', {
+    ctx.throw(400, 'request_not_supported', {
       error_description: 'request parameter provided but not supported',
     });
   }
 
   if (!feature.requestUri && params.request_uri !== undefined) {
-    this.throw(400, 'request_uri_not_supported', {
+    ctx.throw(400, 'request_uri_not_supported', {
       error_description: 'request_uri parameter provided but not supported',
     });
   }
 
   if (params.registration !== undefined) {
-    this.throw(400, 'registration_not_supported', {
+    ctx.throw(400, 'registration_not_supported', {
       error_description: 'registration parameter provided but not supported',
     });
   }
 
-  this.assert(params.request === undefined ||
+  ctx.assert(params.request === undefined ||
     params.request_uri === undefined, new errors.InvalidRequestError(
       'request and request_uri parameters MUST NOT be used together'));
 

@@ -4,15 +4,15 @@ module.exports.handler = function getClientCredentialsHandler(provider) {
   return async function clientCredentialsResponse(ctx, next) {
     const ClientCredentials = provider.ClientCredentials;
     const at = new ClientCredentials({
-      clientId: this.oidc.client.clientId,
-      scope: this.oidc.params.scope,
+      clientId: ctx.oidc.client.clientId,
+      scope: ctx.oidc.params.scope,
     });
 
     const token = await at.save();
     const tokenType = 'Bearer';
     const expiresIn = ClientCredentials.expiresIn;
 
-    this.body = {
+    ctx.body = {
       access_token: token,
       expires_in: expiresIn,
       token_type: tokenType,

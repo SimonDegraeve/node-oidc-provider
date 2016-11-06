@@ -6,8 +6,8 @@ module.exports = function getErrorHandler(provider, emittedError) {
       await next();
     } catch (err) {
       const out = {};
-      this.status = err.statusCode || 500;
-
+      ctx.status = err.statusCode || 500;
+      
       if (err.expose) {
         Object.assign(out,
           { error: err.message, error_description: err.error_description, scope: err.scope });
@@ -18,15 +18,15 @@ module.exports = function getErrorHandler(provider, emittedError) {
 
       // this makes */* requests respond with json (curl, xhr, request libraries), while in
       // browser requests end up rendering the html error instead
-      if (this.accepts('json', 'html') === 'html') {
+      if (ctx.accepts('json', 'html') === 'html') {
         const renderError = provider.configuration('renderError');
-        renderError.call(this, out);
+        renderError(ctx, out);
       } else {
-        this.body = out;
+        ctx.body = out;
       }
-
+      
       if (emittedError) {
-        provider.emit(out.error === 'server_error' ? 'server_error' : emittedError, err, this);
+        provider.emit(out.error === 'server_error' ? 'server_error' : emittedError, err, ctx);
       }
     }
   };

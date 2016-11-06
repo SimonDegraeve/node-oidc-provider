@@ -44,31 +44,62 @@ module.exports = function getClient(provider) {
       return Promise.reject(err);
     }
   }
-
-  function sectorValidate(client) {
+  
+  async function sectorValidate(client) {
     if (client.sectorIdentifierUri !== undefined) {
-      return got(client.sectorIdentifierUri, provider.httpOptions()).then((res) => {
-        try {
-          assert.ok(res.statusCode === 200,
-            `unexpected sector_identifier_uri statusCode, expected 200, got ${res.statusCode}`);
-          const body = JSON.parse(res.body);
-          assert(Array.isArray(body), 'sector_identifier_uri must return single JSON array');
-          const missing = client.redirectUris.find(uri => body.indexOf(uri) === -1);
-          assert(!missing,
-            'all registered redirect_uris must be included in the sector_identifier_uri');
-        } catch (err) {
-          throw new errors.InvalidClientMetadata(err.message);
-        }
-
-        return client;
-      }, (error) => {
+      let res;
+      try {
+        res = await got(client.sectorIdentifierUri, provider.httpOptions());
+      } catch (err) {
         throw new errors.InvalidClientMetadata(
-          `could not load sector_identifier_uri (${error.message})`);
-      });
+          `could not load sector_identifier_uri (${err.message})`);
+      }
+      
+      try {
+        if (res.statusCode !== 200) {
+          throw new Error(`unexpected sector_identifier_uri statusCode, expected 200, got ${res.statusCode}`);
+        }
+        const body = JSON.parse(res.body);
+        if (!Array.isArray(body)) {
+          throw new Error('sector_identifier_uri must return single JSON array');
+        }
+        const missing = client.redirectUris.find(uri => body.indexOf(uri) === -1);
+        if (missing) {
+          throw new Error('all registered redirect_uris must be included in the sector_identifier_uri');
+        }
+      }
+      catch (err) {
+        throw new errors.InvalidClientMetadata(err.message);
+      }
     }
 
     return client;
   }
+
+  // function sectorValidate(client) {
+  //   if (client.sectorIdentifierUri !== undefined) {
+  //     return got(client.sectorIdentifierUri, provider.httpOptions()).then((res) => {
+  //       try {
+  //         assert.ok(res.statusCode === 200,
+  //           `unexpected sector_identifier_uri statusCode, expected 200, got ${res.statusCode}`);
+  //         const body = JSON.parse(res.body);
+  //         assert(Array.isArray(body), 'sector_identifier_uri must return single JSON array');
+  //         const missing = client.redirectUris.find(uri => body.indexOf(uri) === -1);
+  //         assert(!missing,
+  //           'all registered redirect_uris must be included in the sector_identifier_uri');
+  //       } catch (err) {
+  //         throw new errors.InvalidClientMetadata(err.message);
+  //       }
+  // 
+  //       return client;
+  //     }, (error) => {
+  //       throw new errors.InvalidClientMetadata(
+  //         `could not load sector_identifier_uri (${error.message})`);
+  //     });
+  //   }
+  // 
+  //   return client;
+  // }
 
   function buildKeyStore(client) {
     Object.defineProperty(client, 'keystore', { value: jose.JWK.createKeyStore() });

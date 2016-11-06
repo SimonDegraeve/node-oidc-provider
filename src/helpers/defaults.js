@@ -79,9 +79,9 @@ module.exports = {
   interactionUrl,
 };
 
-function interactionUrl(interaction) { // eslint-disable-line no-unused-vars
+function interactionUrl(ctx, interaction) { // eslint-disable-line no-unused-vars
   // this => koa context;
-  return `/interaction/${this.oidc.uuid}`;
+  return `/interaction/${ctx.oidc.uuid}`;
 }
 
 function uniqueness(jti, expiresAt) { // eslint-disable-line no-unused-vars
@@ -89,10 +89,10 @@ function uniqueness(jti, expiresAt) { // eslint-disable-line no-unused-vars
   return Promise.resolve(true);
 }
 
-function renderError(error) {
-  this.type = 'html';
+function renderError(ctx, error) {
+  ctx.type = 'html';
 
-  this.body = `<!DOCTYPE html>
+  ctx.body = `<!DOCTYPE html>
 <head>
   <title>oops! something went wrong</title>
 </head>
@@ -103,8 +103,8 @@ function renderError(error) {
 </html>`;
 }
 
-function logoutSource(form) {
-  this.body = `<!DOCTYPE html>
+function logoutSource(ctx, form) {
+  ctx.body = `<!DOCTYPE html>
 <head>
   <title>Logout</title>
 </head>

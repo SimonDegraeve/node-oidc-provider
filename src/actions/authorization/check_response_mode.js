@@ -20,14 +20,14 @@ const RESPONSE_MODES = {
  * @throws: invalid_request
  */
 module.exports = async function checkResponseMode(ctx, next) {
-  const params = this.oidc.params;
+  const params = ctx.oidc.params;
 
   if (params.response_mode === undefined) {
     params.response_mode = _.get(RESPONSE_MODES, params.response_type, 'query');
   } else {
     const invalid = params.response_mode === 'query' && params.response_type.includes('token');
 
-    this.assert(!invalid, new errors.InvalidRequestError(
+    ctx.assert(!invalid, new errors.InvalidRequestError(
       'response_mode not allowed for this response_type'));
   }
 

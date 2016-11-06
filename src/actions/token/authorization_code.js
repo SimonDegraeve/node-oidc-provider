@@ -9,20 +9,20 @@ const presence = require('../../helpers/validate_presence');
 
 module.exports.handler = function getAuthorizationCodeHandler(provider) {
   return async function authorizationCodeResponse(ctx, next) {
-    presence.call(this, ['code', 'redirect_uri']);
+    presence.call(ctx, ['code', 'redirect_uri']);
 
-    const code = await provider.AuthorizationCode.find(this.oidc.params.code, {
+    const code = await provider.AuthorizationCode.find(ctx.oidc.params.code, {
       ignoreExpiration: true,
     });
 
-    this.assert(code, new errors.InvalidGrantError('authorization code not found'));
-    this.assert(!code.isExpired, new errors.InvalidGrantError('authorization code is expired'));
+    ctx.assert(code, new errors.InvalidGrantError('authorization code not found'));
+    ctx.assert(!code.isExpired, new errors.InvalidGrantError('authorization code is expired'));
 
     // PKCE check
     if (code.codeChallenge) {
       try {
-        assert(this.oidc.params.code_verifier);
-        let expected = this.oidc.params.code_verifier;
+        assert(ctx.oidc.params.code_verifier);
+        let expected = ctx.oidc.params.code_verifier;
 
         if (code.codeChallengeMethod === 'S256') {
           expected = base64url(crypto.createHash('sha256').update(expected).digest());
@@ -30,12 +30,12 @@ module.exports.handler = function getAuthorizationCodeHandler(provider) {
 
         assert.equal(code.codeChallenge, expected);
       } catch (err) {
-        this.throw(new errors.InvalidGrantError('PKCE verification failed'));
+        ctx.throw(new errors.InvalidGrantError('PKCE verification failed'));
       }
     }
 
     try {
-      this.assert(!code.consumed,
+      ctx.assert(!code.consumed,
         new errors.InvalidGrantError('authorization code already consumed'));
 
       await code.consume();
@@ -44,22 +44,22 @@ module.exports.handler = function getAuthorizationCodeHandler(provider) {
       throw err;
     }
 
-    this.assert(code.clientId === this.oidc.client.clientId,
+    ctx.assert(code.clientId === ctx.oidc.client.clientId,
       new errors.InvalidGrantError('authorization code client mismatch'));
 
-    this.assert(code.redirectUri === this.oidc.params.redirect_uri,
+    ctx.assert(code.redirectUri === ctx.oidc.params.redirect_uri,
       new errors.InvalidGrantError('authorization code redirect_uri mismatch'));
 
     const account = await provider.Account.findById(code.accountId);
 
-    this.assert(account,
+    ctx.assert(account,
       new errors.InvalidGrantError('authorization code invalid (referenced account not found)'));
 
     const AccessToken = provider.AccessToken;
     const at = new AccessToken({
       accountId: account.accountId,
       claims: code.claims,
-      clientId: this.oidc.client.clientId,
+      clientId: ctx.oidc.client.clientId,
       grantId: code.grantId,
       scope: code.scope,
       sid: code.sid,
@@ -70,7 +70,7 @@ module.exports.handler = function getAuthorizationCodeHandler(provider) {
     const expiresIn = AccessToken.expiresIn;
 
     let refreshToken;
-    const grantPresent = this.oidc.client.grantTypes.indexOf('refresh_token') !== -1;
+    const grantPresent = ctx.oidc.client.grantTypes.indexOf('refresh_token') !== -1;
     const shouldIssue = provider.configuration('features.refreshToken') ||
       code.scope.split(' ').indexOf('offline_access') !== -1;
 
@@ -81,7 +81,7 @@ module.exports.handler = function getAuthorizationCodeHandler(provider) {
         acr: code.acr,
         authTime: code.authTime,
         claims: code.claims,
-        clientId: this.oidc.client.clientId,
+        clientId: ctx.oidc.client.clientId,
         grantId: code.grantId,
         nonce: code.nonce,
         scope: code.scope,
@@ -94,7 +94,7 @@ module.exports.handler = function getAuthorizationCodeHandler(provider) {
     const IdToken = provider.IdToken;
     const token = new IdToken(Object.assign({}, account.claims(), {
       acr: code.acr, auth_time: code.authTime,
-    }), this.oidc.client.sectorIdentifier);
+    }), ctx.oidc.client.sectorIdentifier);
 
     token.scope = code.scope;
     token.mask = _.get(code.claims, 'id_token', {});
@@ -104,9 +104,9 @@ module.exports.handler = function getAuthorizationCodeHandler(provider) {
     token.set('rt_hash', refreshToken);
     token.set('sid', code.sid);
 
-    const idToken = await token.sign(this.oidc.client);
+    const idToken = await token.sign(ctx.oidc.client);
 
-    this.body = {
+    ctx.body = {
       access_token: accessToken,
       expires_in: expiresIn,
       id_token: idToken,

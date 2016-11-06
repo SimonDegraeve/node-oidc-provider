@@ -8,8 +8,8 @@ const errors = require('../../helpers/errors');
  * @throws: redirect_uri_mismatch
  */
 module.exports = async function checkRedirectUri(ctx, next) {
-  this.oidc.redirectUriCheckPerformed = true;
-  this.assert(this.oidc.client.redirectUriAllowed(this.oidc.params.redirect_uri),
+  ctx.oidc.redirectUriCheckPerformed = true;
+  ctx.assert(ctx.oidc.client.redirectUriAllowed(ctx.oidc.params.redirect_uri),
     new errors.RedirectUriMismatchError());
 
   await next();

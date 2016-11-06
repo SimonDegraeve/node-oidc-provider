@@ -5,8 +5,8 @@
  * values on the client
  */
 module.exports = async function assignDefaults(ctx, next) {
-  const params = this.oidc.params;
-  const client = this.oidc.client;
+  const params = ctx.oidc.params;
+  const client = ctx.oidc.client;
 
   if (!params.acr_values && client.defaultAcrValues) {
     params.acr_values = client.defaultAcrValues.join(' ');

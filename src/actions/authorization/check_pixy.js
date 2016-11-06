@@ -9,13 +9,13 @@ const ALLOWED = ['plain', 'S256'];
  * check presence of code code_challenge if code_challenge_method is provided
  */
 module.exports = async function checkPixy(ctx, next) {
-  const params = this.oidc.params;
+  const params = ctx.oidc.params;
 
   if (params.code_challenge_method) {
-    this.assert(ALLOWED.indexOf(params.code_challenge_method) !== -1,
+    ctx.assert(ALLOWED.indexOf(params.code_challenge_method) !== -1,
       new errors.InvalidRequestError('not supported value of code_challenge_method'));
 
-    this.assert(params.code_challenge,
+    ctx.assert(params.code_challenge,
       new errors.InvalidRequestError('code_challenge must be provided with code_challenge_method'));
   }
 

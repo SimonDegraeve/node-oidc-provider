@@ -11,7 +11,7 @@ const errors = require('../../helpers/errors');
  */
 module.exports = async function oidcRequired(ctx, next) {
   // Validate: required params
-  const params = this.oidc.params;
+  const params = ctx.oidc.params;
   const missing = [];
 
   if (params.redirect_uri === undefined) missing.push('redirect_uri');
@@ -21,7 +21,7 @@ module.exports = async function oidcRequired(ctx, next) {
     missing.push('nonce');
   }
 
-  this.assert(_.isEmpty(missing), new errors.InvalidRequestError(
+  ctx.assert(_.isEmpty(missing), new errors.InvalidRequestError(
     `missing required parameter(s) ${missing.join(',')}`));
 
   await next();

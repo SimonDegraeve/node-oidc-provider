@@ -209,7 +209,7 @@ const route = '/auth';
               }
             })
           });
-
+          
           return wrap({ agent, route, verb, auth })
           .expect(302)
           .expect(auth.validateFragment)

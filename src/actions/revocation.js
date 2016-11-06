@@ -30,19 +30,19 @@ module.exports = function revocationAction(provider) {
     authAndParams(provider, PARAM_LIST),
 
     async function validateTokenPresence(ctx, next) {
-      presence.call(this, ['token']);
+      presence.call(ctx, ['token']);
       await next();
     },
 
     async function renderTokenResponse(ctx, next) {
-      this.body = {};
+      ctx.body = {};
       await next();
     },
-
-    async function revokeToken() {
+    
+    async function revokeToken(ctx, next) {
       let tryhard;
-      const params = this.oidc.params;
-
+      const params = ctx.oidc.params;
+            
       switch (params.token_type_hint) {
         case 'access_token':
           tryhard = getAccessToken(params.token)
@@ -81,30 +81,31 @@ module.exports = function revocationAction(provider) {
             getRefreshToken(params.token),
           ]).then(findResult);
       }
-
+    
       let token;
       try {
         token = await Promise.resolve(tryhard);
+        
       } catch (err) {
+    
         if (err.message === 'invalid_token') {
           return;
         }
         throw err;
       }
-
+    
       switch (token && token.kind) {
         case 'AccessToken':
         case 'ClientCredentials':
         case 'RefreshToken':
-
-          this.assert(token.clientId === this.oidc.client.clientId,
+          ctx.assert(token.clientId === ctx.oidc.client.clientId,
             new errors.InvalidRequestError('this token does not belong to you'));
-
+    
           await token.destroy();
-
+    
           break;
         default:
-          this.throw(400, 'unsupported_token_type', {
+          ctx.throw(400, 'unsupported_token_type', {
             error_description: 'revocation of the presented token type is not supported',
           });
       }

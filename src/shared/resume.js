@@ -8,44 +8,44 @@ const j = JSON.parse;
 
 module.exports = function getResumeAction(provider) {
   return async function resumeAction(ctx, next) {
-    this.oidc.uuid = this.params.grant;
+    ctx.oidc.uuid = ctx.params.grant;
 
     const cookieOptions = provider.configuration('cookies.short');
 
     try {
-      this.query = j(this.cookies.get('_grant', cookieOptions));
+      ctx.query = j(ctx.cookies.get('_grant', cookieOptions));
     } catch (err) {
       throw new errors.InvalidRequestError('authorization request has expired');
     }
 
     let result;
     try {
-      result = j(this.cookies.get('_grant_result', cookieOptions));
+      result = j(ctx.cookies.get('_grant_result', cookieOptions));
     } catch (err) {
       result = {};
     }
 
     if (result.login) {
-      if (!result.login.remember) this.oidc.session.transient = true;
+      if (!result.login.remember) ctx.oidc.session.transient = true;
 
-      if (this.oidc.session.account !== result.login.account) {
-        delete this.oidc.session.authorizations;
+      if (ctx.oidc.session.account !== result.login.account) {
+        delete ctx.oidc.session.authorizations;
       }
 
-      this.oidc.session.acrValue = result.login.acr;
-      this.oidc.session.account = result.login.account;
-      this.oidc.session.loginTs = result.login.ts;
+      ctx.oidc.session.acrValue = result.login.acr;
+      ctx.oidc.session.account = result.login.account;
+      ctx.oidc.session.loginTs = result.login.ts;
     }
 
     if (result.consent && result.consent.scope !== undefined) {
-      this.query.scope = String(result.consent.scope);
+      ctx.query.scope = String(result.consent.scope);
     }
 
-    if (!_.isEmpty(result) && !this.oidc.session.sidFor(this.query.client_id)) {
-      this.oidc.session.sidFor(this.query.client_id, uuid());
+    if (!_.isEmpty(result) && !ctx.oidc.session.sidFor(ctx.query.client_id)) {
+      ctx.oidc.session.sidFor(ctx.query.client_id, uuid());
     }
 
-    this.oidc.result = result;
+    ctx.oidc.result = result;
 
     await next();
   };

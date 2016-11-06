@@ -10,14 +10,14 @@ const errors = require('../../helpers/errors');
  */
 module.exports = async function oauthRequired(ctx, next) {
   // Validate: required oauth params
-  const params = this.oidc.params;
+  const params = ctx.oidc.params;
   const missing = _.difference([
     'response_type',
     'client_id',
     'scope',
   ], _.keys(_.omitBy(params, _.isUndefined)));
 
-  this.assert(_.isEmpty(missing), new errors.InvalidRequestError(
+  ctx.assert(_.isEmpty(missing), new errors.InvalidRequestError(
     `missing required parameter(s) ${missing.join(',')}`));
 
   await next();

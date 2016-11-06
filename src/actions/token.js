@@ -15,21 +15,21 @@ module.exports = function tokenAction(provider) {
     authAndParams(provider, instance(provider).grantTypeWhitelist),
 
     async function supportedGrantTypeCheck(ctx, next) {
-      presence.call(this, ['grant_type']);
+      presence.call(ctx, ['grant_type']);
 
       const supported = provider.configuration('grantTypes');
 
-      this.assert(supported.has(this.oidc.params.grant_type), 400, 'unsupported_grant_type', {
-        error_description: `unsupported grant_type requested (${this.oidc.params.grant_type})`,
+      ctx.assert(supported.has(ctx.oidc.params.grant_type), 400, 'unsupported_grant_type', {
+        error_description: `unsupported grant_type requested (${ctx.oidc.params.grant_type})`,
       });
 
       await next();
     },
 
     async function allowedGrantTypeCheck(ctx, next) {
-      const oidc = this.oidc;
+      const oidc = ctx.oidc;
 
-      this.assert(oidc.client.grantTypeAllowed(oidc.params.grant_type), 400,
+      ctx.assert(oidc.client.grantTypeAllowed(oidc.params.grant_type), 400,
         'restricted_grant_type', {
           error_description: 'requested grant type is restricted to this client',
         });
@@ -38,15 +38,17 @@ module.exports = function tokenAction(provider) {
     },
 
     async function callTokenHandler(ctx, next) {
-      const grantType = this.oidc.params.grant_type;
+      const grantType = ctx.oidc.params.grant_type;
 
       const grantTypeHandlers = instance(provider).grantTypeHandlers;
+      
+      
       /* istanbul ignore else */
       if (grantTypeHandlers.has(grantType)) {
-        await grantTypeHandlers.get(grantType).call(this, next);
-        provider.emit('grant.success', this);
+        await Promise.resolve(grantTypeHandlers.get(grantType)(ctx, next));
+        provider.emit('grant.success', ctx);
       } else {
-        this.throw(500, 'server_error', {
+        ctx.throw(500, 'server_error', {
           error_description: 'not implemented grant type',
         });
       }

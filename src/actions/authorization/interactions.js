@@ -16,7 +16,7 @@ module.exports = (provider) => {
     const interactionChecks = [
 
       // no account id was found in the session info
-      () => {
+      async () => {
         if (!ctx.oidc.session.accountId()) {
           return {
             error: 'login_required',
@@ -29,7 +29,7 @@ module.exports = (provider) => {
       },
 
       // login was requested by the client by prompt parameter
-      () => {
+      async () => {
         if (ctx.oidc.prompted('login')) {
           return {
             error: 'login_required',
@@ -42,7 +42,7 @@ module.exports = (provider) => {
       },
 
       // session is too old for this authorization request
-      () => {
+      async () => {
         if (ctx.oidc.session.past(ctx.oidc.params.max_age)) {
           return {
             error: 'login_required',
@@ -55,7 +55,7 @@ module.exports = (provider) => {
       },
 
       // session subject value differs from the one requested
-      () => {
+      async () => {
         if (_.has(ctx.oidc.claims, 'id_token.sub.value')) {
           const subject = Claims.sub(ctx.oidc.session.accountId(), ctx.oidc.client.sectorIdentifier);
           if (ctx.oidc.claims.id_token.sub.value !== subject) {
@@ -73,9 +73,10 @@ module.exports = (provider) => {
 
       // none of multiple authentication context class references requested
       // are met
-      () => {
+      async () => {
         const request = _.get(ctx.oidc.claims, 'id_token.acr', {});
         if (request.essential && request.values) {
+        
           if (request.values.indexOf(ctx.oidc.session.acr()) === -1) {
             return {
               error: 'login_required',
@@ -89,7 +90,7 @@ module.exports = (provider) => {
       },
 
       // single requested authentication context class reference is not met
-      () => {
+      async () => {
         const request = _.get(ctx.oidc.claims, 'id_token.acr', {});
         if (request.essential && request.value) {
           if (request.value !== ctx.oidc.session.acr()) {
@@ -105,7 +106,7 @@ module.exports = (provider) => {
       },
 
       // any unfulfilled prompts other than none or login
-      () => {
+      async () => {
         const missed = _.find(ctx.oidc.prompts, (prompt) => {
           if (prompt !== 'none' && ctx.oidc.prompted(prompt)) {
             return true;
@@ -129,7 +130,7 @@ module.exports = (provider) => {
       // - authorize once per session
       // - pass everyone
       // - check account model
-      () => {
+      async () => {
         if (!ctx.oidc.session.sidFor(ctx.oidc.client.clientId)) {
           return {
             error: 'consent_required',
@@ -141,26 +142,27 @@ module.exports = (provider) => {
         return false;
       },
 
-      () => {
+      async () => {
         if (ctx.oidc.params.id_token_hint !== undefined) {
           const actualSub = Claims.sub(ctx.oidc.session.accountId(), ctx.oidc.client.sectorIdentifier);
           const IdToken = provider.IdToken;
+          
+          try {
+            const decoded = await IdToken.validate(ctx.oidc.params.id_token_hint, ctx.oidc.client)
+              if (decoded.payload.sub !== actualSub) {
+                return {
+                  error: 'login_required',
+                  error_description: 'id_token_hint and authenticated subject do not match',
+                  reason: 'id_token_hint',
+                  reason_description: `${clientName} asks that you Sign-in with a specific identity.`,
+                };
+              }
 
-          return IdToken.validate(ctx.oidc.params.id_token_hint, ctx.oidc.client).then((decoded) => {
-            if (decoded.payload.sub !== actualSub) {
-              return {
-                error: 'login_required',
-                error_description: 'id_token_hint and authenticated subject do not match',
-                reason: 'id_token_hint',
-                reason_description: `${clientName} asks that you Sign-in with a specific identity.`,
-              };
-            }
-
-            return false;
-          }, (err) => {
-            throw new errors.InvalidRequestError(
-              `could not validate id_token_hint (${err.message})`);
-          });
+              return false;
+          }
+          catch (err) {
+            throw new errors.InvalidRequestError(`could not validate id_token_hint (${err.message})`);
+          }
         }
 
         return false;
@@ -170,7 +172,9 @@ module.exports = (provider) => {
     let interaction;
 
     for (const fn of interactionChecks) {
-      interaction = await Promise.resolve(fn());
+      interaction = await fn();
+      // if (interaction instanceof Promise) interaction = await Promise.resolve(interaction);
+      // interaction = await Promise.resolve(fn());
       if (interaction) break;
     }
 
@@ -181,26 +185,26 @@ module.exports = (provider) => {
       });
 
       // if interaction needed but prompt=none => throw;
-      this.assert(!ctx.oidc.prompted('none'), 302, interaction.error, {
+      ctx.assert(!ctx.oidc.prompted('none'), 302, interaction.error, {
         error_description: interaction.error_description,
       });
 
-      const destination = provider.configuration('interactionUrl').call(this, interaction);
+      const destination = provider.configuration('interactionUrl')(ctx, interaction);
       const cookieOptions = provider.configuration('cookies.short');
 
-      this.cookies.set('_grant', j({
+      ctx.cookies.set('_grant', j({
         interaction,
         uuid: ctx.oidc.uuid,
         returnTo: ctx.oidc.urlFor('resume', { grant: ctx.oidc.uuid }),
         params: ctx.oidc.params,
       }), Object.assign({ path: url.parse(destination).pathname }, cookieOptions));
 
-      this.cookies.set('_grant', j(ctx.oidc.params), Object.assign({
+      ctx.cookies.set('_grant', j(ctx.oidc.params), Object.assign({
         path: provider.pathFor('resume', { grant: ctx.oidc.uuid }),
       }, cookieOptions));
 
-      provider.emit('interaction.started', interaction, this);
-      return this.redirect(destination);
+      provider.emit('interaction.started', interaction, ctx);
+      return ctx.redirect(destination);
     }
 
     return await next();
