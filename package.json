@@ -14,6 +14,7 @@
     "lodash": "^4.16.6",
     "lru-cache": "^4.0.1",
     "node-jose": "^0.9.1",
+    "nodent-runtime": "^3.0.3",
     "oidc-token-hash": "^1.0.1",
     "uuid": "^2.0.3",
     "valid-url": "^1.0.9"
